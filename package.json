@@ -1,0 +1,27 @@
+{
+  "name": "commit-sense",
+  "displayName": "CommitSense",
+  "description": "Generate meaningul Git commit messages based on staged changes.",
+  "version": "1.0.0",
+  "publisher": "Harshrajeshnaikdhure",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "commitSense.generateCommitMessage",
+        "title": "CommitSense: Generate Commit Message"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "18.x"
+  }
+}
