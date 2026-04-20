@@ -3,7 +3,7 @@
   "displayName": "CommitSense",
   "description": "Generate meaningul Git commit messages based on staged changes.",
   "version": "1.0.0",
-  "publisher": "Harshrajeshnaikdhure",
+  "publisher": "harshrajeshnaikdhure",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -16,6 +16,7 @@
     "commit",
     "conventional commits"
   ],
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/unusual-me/CommitSense.git"
