@@ -8,8 +8,18 @@
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "SCM Providers"
   ],
+  "keywords": [
+    "git",
+    "commit",
+    "conventional commits"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/commit-sense"
+  },
   "activationEvents": [],
   "main": "./src/extension.js",
   "contributes": {
