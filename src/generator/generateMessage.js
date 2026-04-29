@@ -1,5 +1,8 @@
 // Weak/vague words that should never appear in a final commit message
-const WEAK_WORDS = ['update code', 'changes', 'stuff', 'fix stuff', 'modify', 'change'];
+const WEAK_WORDS = [
+    'update code', 'changes', 'stuff', 'fix stuff',
+    'modify', 'change', 'update files', 'update multiple'
+];
 
 // Soft length limit for commit subject line (Conventional Commits recommendation)
 const MAX_SUBJECT_LENGTH = 50;

@@ -58,6 +58,14 @@ function extractChangedFiles(lines) {
 /**
  * Detects the commit type based on file extensions and added diff lines.
  * Priority: test > chore > docs > fix > refactor > feat (default)
+ *
+ * Keyword domain signals (checked against added content):
+ *   auth    → login, jwt, token, session, password, authenticate
+ *   payment → invoice, billing, transaction, checkout, stripe, refund
+ *   db      → schema, migration, query, sequelize, mongoose, knex
+ *   api     → endpoint, route, controller, middleware, handler, swagger
+ *   test    → spec, mock, stub, spy, expect, describe, it(
+ *
  * @param {string[]} changedFiles
  * @param {string[]} addedLines
  * @returns {string}
@@ -73,7 +81,7 @@ function detectType(changedFiles, addedLines) {
     );
     if (isChore) return 'chore';
 
-    const isDocs = changedFiles.every(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.rst'));
+    const isDocs = changedFiles.length > 0 && changedFiles.every(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.rst'));
     if (isDocs) return 'docs';
 
     // Check content added in the diff
@@ -141,7 +149,43 @@ function detectScope(changedFiles) {
 }
 
 /**
+ * Domain keyword signals used to generate smarter multi-file descriptions.
+ * Each entry maps a domain label to a list of content signals.
+ */
+const DOMAIN_SIGNALS = [
+    { label: 'login',      keywords: ['login', 'signin', 'sign-in'] },
+    { label: 'signup',     keywords: ['signup', 'register', 'registration', 'sign-up'] },
+    { label: 'auth',       keywords: ['authentication', 'authenticate', 'jwt', 'token', 'session', 'password', 'oauth'] },
+    { label: 'validation', keywords: ['validation', 'validate', 'validator', 'schema'] },
+    { label: 'payment',    keywords: ['payment', 'invoice', 'billing', 'transaction', 'checkout', 'stripe', 'refund'] },
+    { label: 'database',   keywords: ['migration', 'schema', 'query', 'sequelize', 'mongoose', 'knex', 'prisma'] },
+    { label: 'api',        keywords: ['endpoint', 'route', 'controller', 'middleware', 'handler', 'swagger', 'rest'] },
+    { label: 'tests',      keywords: ['spec', 'mock', 'stub', 'spy', 'expect', 'describe', 'it('] },
+    { label: 'config',     keywords: ['config', 'env', 'settings', 'dotenv'] },
+    { label: 'notification', keywords: ['notification', 'email', 'sms', 'push', 'alert'] },
+];
+
+/**
+ * Finds matched domain labels from diff content and changed file paths.
+ * @param {string} addedContent - Lowercased concatenation of added diff lines.
+ * @param {string[]} changedFiles
+ * @returns {string[]} Matched domain labels (up to 2 most specific)
+ */
+function detectDomainLabels(addedContent, changedFiles) {
+    const fileStr = changedFiles.join(' ').toLowerCase();
+    const combined = addedContent + ' ' + fileStr;
+    const matches = [];
+    for (const { label, keywords } of DOMAIN_SIGNALS) {
+        if (keywords.some(kw => combined.includes(kw))) {
+            matches.push(label);
+        }
+    }
+    return matches.slice(0, 2); // keep at most 2 labels for readability
+}
+
+/**
  * Generates a human-readable description using strong action verbs.
+ * Avoids weak verbs (change, modify, update) — uses add, implement, fix, refactor, remove.
  * @param {string} type
  * @param {string[]} changedFiles
  * @param {string[]} addedLines
@@ -157,7 +201,7 @@ function buildDescription(type, changedFiles, addedLines) {
         docs:     'update docs for',
     };
 
-    const verb = VERB_MAP[type] || 'update';
+    const verb = VERB_MAP[type] || 'implement';
     const addedContent = addedLines.join(' ').toLowerCase();
 
     // Single file
@@ -167,40 +211,81 @@ function buildDescription(type, changedFiles, addedLines) {
         const baseName = parts[parts.length - 1].replace(/\.[^.]+$/, '');
 
         if (type === 'fix') {
-            // Try to be more specific about what was fixed
             if (addedContent.includes('validation') || addedContent.includes('validate')) {
                 return { desc: `resolve ${baseName} validation issue`, isGeneric: false };
             }
             if (addedContent.includes('error') || addedContent.includes('exception')) {
                 return { desc: `handle ${baseName} error`, isGeneric: false };
             }
+            if (addedContent.includes('null') || addedContent.includes('undefined')) {
+                return { desc: `fix null reference in ${baseName}`, isGeneric: false };
+            }
             return { desc: `resolve issue in ${baseName}`, isGeneric: false };
         }
 
         if (type === 'feat') {
+            const labels = detectDomainLabels(addedContent, changedFiles);
+            if (labels.length > 0) {
+                return { desc: `add ${labels.join(' and ')}`, isGeneric: false };
+            }
             if (addedContent.includes('class') || addedContent.includes('function') || addedContent.includes('const')) {
                 return { desc: `implement ${baseName} logic`, isGeneric: false };
             }
             return { desc: `add ${baseName}`, isGeneric: false };
         }
 
+        if (type === 'refactor') {
+            if (addedContent.includes('remove') || addedContent.includes('delete') || addedContent.includes('drop')) {
+                return { desc: `remove unused code in ${baseName}`, isGeneric: false };
+            }
+            return { desc: `refactor ${baseName}`, isGeneric: false };
+        }
+
         return { desc: `${verb} ${baseName}`, isGeneric: false };
     }
 
     // Multiple files
-    const baseNames = changedFiles
-        .map(f => f.split('/').pop().replace(/\.[^.]+$/, ''))
-        .filter((n, i, arr) => arr.indexOf(n) === i); // unique names
-
     if (type === 'chore') {
         return { desc: 'update project configuration', isGeneric: false };
     }
     if (type === 'test') {
+        // Try domain labels first (picks up 'auth', 'payment', etc from content + filenames)
+        const labels = detectDomainLabels(addedContent, changedFiles);
+        if (labels.length > 0) {
+            return { desc: `add tests for ${labels.join(' and ')}`, isGeneric: false };
+        }
+
+        // Fall back to base names of non-test files (e.g. auth.controller, user.service)
+        const nonTestFiles = changedFiles.filter(f =>
+            !f.includes('.test.') && !f.includes('.spec.') &&
+            !f.includes('__tests__') && !f.includes('/test/')
+        );
+        if (nonTestFiles.length > 0) {
+            const nonTestNames = nonTestFiles
+                .map(f => f.split('/').pop().replace(/\.[^.]+$/, ''))
+                .filter((n, i, arr) => arr.indexOf(n) === i); // unique
+            if (nonTestNames.length <= 2) {
+                return { desc: `add tests for ${nonTestNames.join(' and ')}`, isGeneric: false };
+            }
+            return { desc: 'add tests for multiple modules', isGeneric: false };
+        }
+
+        // Pure test-only commit with no recognizable domain
         return { desc: 'add test coverage', isGeneric: false };
     }
     if (type === 'docs') {
         return { desc: 'update documentation', isGeneric: false };
     }
+
+    // For feat/fix/refactor with multiple files — try domain-aware description
+    const labels = detectDomainLabels(addedContent, changedFiles);
+    if (labels.length > 0) {
+        return { desc: `${verb} ${labels.join(' and ')}`, isGeneric: false };
+    }
+
+    const baseNames = changedFiles
+        .map(f => f.split('/').pop().replace(/\.[^.]+$/, ''))
+        .filter((n, i, arr) => arr.indexOf(n) === i); // unique names
 
     if (baseNames.length <= 2) {
         return { desc: `${verb} ${baseNames.join(' and ')}`, isGeneric: false };
@@ -211,8 +296,8 @@ function buildDescription(type, changedFiles, addedLines) {
 }
 
 /**
- * Analyzes the staged git diff and extracts structured metadata.
- * @param {string} rawDiff - The raw output from `git diff --staged`
+ * Analyzes the staged (or unstaged) git diff and extracts structured metadata.
+ * @param {string} rawDiff - The raw output from `git diff --staged` or `git diff`
  * @returns {DiffAnalysis}
  */
 function analyzeDiff(rawDiff) {

@@ -1,8 +1,9 @@
 const vscode = require('vscode');
-const { getStagedDiff } = require('./git/getDiff');
+const { getStagedDiff, getUnstagedDiff } = require('./git/getDiff');
 const { analyzeDiff }   = require('./analyzer/analyzeDiff');
 const { generateMessage } = require('./generator/generateMessage');
 const { commitChanges } = require('./git/commit');
+const { pushChanges }   = require('./git/push');
 
 /**
  * Shows a QuickPick preview of the generated commit message and returns
@@ -54,6 +55,52 @@ async function editMessage(defaultMessage) {
 }
 
 /**
+ * Shows a Yes/No QuickPick confirmation dialog.
+ * @param {string} title
+ * @param {string} placeHolder
+ * @returns {Promise<boolean>} true if user selected Yes, false otherwise
+ */
+async function confirmAction(title, placeHolder) {
+    const YES = '$(check)  Yes';
+    const NO  = '$(close)  No';
+    const pick = await vscode.window.showQuickPick([YES, NO], {
+        title,
+        placeHolder,
+        ignoreFocusOut: true,
+    });
+    return pick === YES;
+}
+
+/**
+ * Handles the push-after-commit flow.
+ * Respects the commitSense.enablePushPrompt configuration setting.
+ * @param {string} workspacePath
+ */
+async function promptPush(workspacePath) {
+    const config = vscode.workspace.getConfiguration('commitSense');
+    if (!config.get('enablePushPrompt')) return;
+
+    const wantPush = await confirmAction(
+        'CommitSense — Push Changes',
+        'Do you want to push changes to the current branch?'
+    );
+    if (!wantPush) return;
+
+    const confirmed = await confirmAction(
+        'CommitSense — Confirm Push',
+        'Are you sure you want to push to the remote?'
+    );
+    if (!confirmed) return;
+
+    try {
+        await pushChanges(workspacePath);
+        vscode.window.showInformationMessage('CommitSense: 🚀 Pushed successfully!');
+    } catch (err) {
+        vscode.window.showErrorMessage(`CommitSense: Push failed — ${err.message}`);
+    }
+}
+
+/**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
@@ -68,7 +115,7 @@ function activate(context) {
             }
             const workspacePath = workspaceFolders[0].uri.fsPath;
 
-            // ── 2. Fetch staged diff ────────────────────────────────────────
+            // ── 2. Fetch staged diff, fall back to unstaged if empty ────────
             let diff;
             try {
                 diff = await getStagedDiff(workspacePath);
@@ -78,10 +125,26 @@ function activate(context) {
             }
 
             if (!diff) {
-                vscode.window.showErrorMessage(
-                    'CommitSense: No staged changes found. Please stage files first (git add).'
+                // No staged changes — ask user if they want to use all changes
+                const useUnstaged = await confirmAction(
+                    'CommitSense — No Staged Changes',
+                    'No staged changes found. Generate from all working-tree changes?'
                 );
-                return;
+                if (!useUnstaged) return;
+
+                try {
+                    diff = await getUnstagedDiff(workspacePath);
+                } catch (err) {
+                    vscode.window.showErrorMessage(`CommitSense: ${err.message}`);
+                    return;
+                }
+
+                if (!diff) {
+                    vscode.window.showErrorMessage(
+                        'CommitSense: No changes found at all. Make some edits first.'
+                    );
+                    return;
+                }
             }
 
             // ── 3. Analyze + generate ───────────────────────────────────────
@@ -121,11 +184,23 @@ function activate(context) {
                 }
 
                 if (action === 'commit') {
+                    // ── 5. Optional commit confirmation ─────────────────────
+                    const config = vscode.workspace.getConfiguration('commitSense');
+                    if (config.get('confirmCommit')) {
+                        const confirmed = await confirmAction(
+                            'CommitSense — Confirm Commit',
+                            `Are you sure you want to commit? "${finalMessage}"`
+                        );
+                        if (!confirmed) {
+                            // Loop back to preview so user can reconsider
+                            continue;
+                        }
+                    }
                     break; // Proceed to commit
                 }
             }
 
-            // ── 5. Execute git commit ───────────────────────────────────────
+            // ── 6. Execute git commit ───────────────────────────────────────
             try {
                 await commitChanges(workspacePath, finalMessage);
                 vscode.window.showInformationMessage(
@@ -133,7 +208,11 @@ function activate(context) {
                 );
             } catch (err) {
                 vscode.window.showErrorMessage(`CommitSense: Commit failed — ${err.message}`);
+                return;
             }
+
+            // ── 7. Offer to push ────────────────────────────────────────────
+            await promptPush(workspacePath);
         }
     );
 
