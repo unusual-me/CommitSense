@@ -2,7 +2,7 @@
   "name": "commitsense-vscode-ext",
   "displayName": "CommitSense",
   "description": "Generate meaningul Git commit messages based on staged changes.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "harshrajeshnaikdhure",
   "scripts": {
     "test:unit":        "node tests/unit/analyzeDiff.test.js",
