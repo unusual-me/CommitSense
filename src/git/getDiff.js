@@ -19,4 +19,24 @@ function getStagedDiff(cwd) {
     });
 }
 
-module.exports = { getStagedDiff };
+/**
+ * Retrieves the full working-tree diff (unstaged + staged) in the repository.
+ * Used as a fallback when no staged changes are found.
+ * @param {string} cwd - The workspace directory path.
+ * @returns {Promise<string>} The output of git diff
+ */
+function getUnstagedDiff(cwd) {
+    return new Promise((resolve, reject) => {
+        exec('git diff', { cwd, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            if (error) {
+                if (stderr.includes('not a git repository')) {
+                    return reject(new Error('Workspace is not a git repository.'));
+                }
+                return reject(new Error(stderr || error.message));
+            }
+            resolve(stdout.trim());
+        });
+    });
+}
+
+module.exports = { getStagedDiff, getUnstagedDiff };

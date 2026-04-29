@@ -2,8 +2,13 @@
   "name": "commitsense-vscode-ext",
   "displayName": "CommitSense",
   "description": "Generate meaningul Git commit messages based on staged changes.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "harshrajeshnaikdhure",
+  "scripts": {
+    "test:unit":        "node tests/unit/analyzeDiff.test.js",
+    "test:integration": "node tests/integration/integration.test.js",
+    "test":             "node tests/unit/analyzeDiff.test.js && node tests/integration/integration.test.js"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -27,9 +32,43 @@
     "commands": [
       {
         "command": "commitSense.generateCommitMessage",
-        "title": "CommitSense: Generate Commit Message"
+        "title": "Generate Commit Message",
+        "category": "CommitSense",
+        "icon": "$(git-commit)"
       }
-    ]
+    ],
+    "keybindings": [
+      {
+        "command": "commitSense.generateCommitMessage",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorTextFocus || scmFocus"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "commitSense.generateCommitMessage",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CommitSense",
+      "properties": {
+        "commitSense.confirmCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask confirmation before committing."
+        },
+        "commitSense.enablePushPrompt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt to push after a successful commit."
+        }
+      }
+    }
   },
   "devDependencies": {
     "@types/vscode": "^1.74.0",
